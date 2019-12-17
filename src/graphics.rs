@@ -35,13 +35,16 @@ const INVALID_PIPELINE: Dx12PipelineHandle = Dx12PipelineHandle {
     generation: 0,
 };
 
+pub const DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING: u32 =
+    0 | (1 << 3) | (2 << (3 * 2)) | (3 << (3 * 3)) | (1 << (3 * 4));
+
 pub struct Dx12Context {
     pub device: Dx12Device,
-    pub cmdlist: Dx12GraphicsCommandList,
+    pub cmdqueue: Dx12CommandQueue,
     pub frame_index: u32,
     pub resolution: [u32; 2],
     pub window: HWND,
-    cmdqueue: Dx12CommandQueue,
+    cmdlist: Dx12GraphicsCommandList,
     cmdallocs: [WeakPtr<ID3D12CommandAllocator>; 2],
     swapchain: WeakPtr<IDXGISwapChain3>,
     rtv_heap: DescriptorHeap,
@@ -641,6 +644,11 @@ impl Dx12Context {
     }
 
     #[inline]
+    pub fn get_current_command_list(&self) -> Dx12GraphicsCommandList {
+        self.cmdlist
+    }
+
+    #[inline]
     fn validate_resource_state(&self, handle: Dx12ResourceHandle) {
         let index = handle.index as usize;
         assert!(index > 0 && index <= MAX_NUM_RESOURCES);
@@ -713,12 +721,12 @@ impl Dx12Context {
         resource.format = DXGI_FORMAT_UNKNOWN;
     }
 
-    pub fn cmd_transition_barrier(
+    pub fn transition_barrier(
         &mut self,
+        cmdlist: Dx12GraphicsCommandList,
         resource_handle: Dx12ResourceHandle,
         state_after: D3D12_RESOURCE_STATES,
     ) {
-        let cmdlist = self.cmdlist;
         let mut resource = self.get_resource_state_mut(resource_handle);
         if resource.state != state_after {
             unsafe {
@@ -731,13 +739,16 @@ impl Dx12Context {
         }
     }
 
-    pub fn cmd_set_graphics_pipeline(&mut self, handle: Dx12PipelineHandle) {
+    pub fn set_graphics_pipeline(
+        &mut self,
+        cmdlist: Dx12GraphicsCommandList,
+        handle: Dx12PipelineHandle,
+    ) {
         let pipeline_state = self.get_pipeline_state(handle);
         if handle != self.current_pipeline {
             unsafe {
-                self.cmdlist.SetPipelineState(pipeline_state.pso.as_raw());
-                self.cmdlist
-                    .SetGraphicsRootSignature(pipeline_state.rsignature.as_raw());
+                cmdlist.SetPipelineState(pipeline_state.pso.as_raw());
+                cmdlist.SetGraphicsRootSignature(pipeline_state.rsignature.as_raw());
                 self.current_pipeline = handle;
             }
         }
@@ -890,16 +901,6 @@ impl Dx12Context {
         self.gpu_cbv_srv_uav_heaps[self.frame_index as usize].allocate_gpu_descriptors(num)
     }
 
-    pub fn execute_command_list(&mut self) {
-        vhr!(self.cmdlist.Close());
-        unsafe {
-            self.cmdqueue.ExecuteCommandLists(
-                1,
-                &self.cmdlist.as_raw() as *const *mut _ as *const *mut ID3D12CommandList,
-            )
-        };
-    }
-
     pub fn allocate_upload_memory(
         &mut self,
         size: u32,
@@ -908,9 +909,11 @@ impl Dx12Context {
 
         let (cpu_base, gpu_base) = self.gpu_upload_memory_heaps[index].allocate(size);
         if cpu_base == ptr::null_mut() && gpu_base == 0 {
-            self.execute_command_list();
+            self.cmdlist.close();
+            self.cmdqueue
+                .execute_command_list(&[self.cmdlist.as_raw() as *mut _]);
             self.finish();
-            self.reset_command_list();
+            self.get_and_reset_command_list();
         }
 
         let (cpu_base, gpu_base) = self.gpu_upload_memory_heaps[index].allocate(size);
@@ -931,6 +934,24 @@ impl Dx12Context {
         let offset = self.gpu_upload_memory_heaps[self.frame_index as usize].size - size;
 
         (cpu_addr, buffer, offset as u64)
+    }
+
+    #[inline]
+    pub fn copy_descriptors_to_gpu_heap(
+        &mut self,
+        num_descriptors: u32,
+        src_cpu_base: D3D12_CPU_DESCRIPTOR_HANDLE,
+    ) -> D3D12_GPU_DESCRIPTOR_HANDLE {
+        let (dest_cpu_base, dest_gpu_base) = self.allocate_gpu_descriptors(num_descriptors);
+        unsafe {
+            self.device.CopyDescriptorsSimple(
+                num_descriptors,
+                dest_cpu_base,
+                src_cpu_base,
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+            )
+        };
+        dest_gpu_base
     }
 
     pub fn present_frame(&mut self, swap_interval: u32) {
@@ -959,7 +980,7 @@ impl Dx12Context {
         self.gpu_upload_memory_heaps[self.frame_index as usize].size = 0;
     }
 
-    pub fn reset_command_list(&mut self) -> Dx12GraphicsCommandList {
+    pub fn get_and_reset_command_list(&mut self) -> Dx12GraphicsCommandList {
         let index = self.frame_index as usize;
         unsafe {
             self.cmdallocs[index].Reset();

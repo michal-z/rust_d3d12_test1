@@ -9,6 +9,26 @@ pub type Dx12CommandQueue = WeakPtr<ID3D12CommandQueue>;
 pub type Dx12GraphicsCommandList = WeakPtr<ID3D12GraphicsCommandList1>;
 pub type Dx12Resource = WeakPtr<ID3D12Resource>;
 
+impl Dx12Device {
+    #[inline]
+    pub fn create_shader_resource_view(
+        &self,
+        resource: Option<Dx12Resource>,
+        desc: Option<&D3D12_SHADER_RESOURCE_VIEW_DESC>,
+        dest_descriptor: D3D12_CPU_DESCRIPTOR_HANDLE,
+    ) {
+        let resource = match resource {
+            Some(r) => r.as_raw(),
+            None => ptr::null_mut(),
+        };
+        let desc = match desc {
+            Some(d) => d as *const _,
+            None => ptr::null(),
+        };
+        unsafe { self.CreateShaderResourceView(resource, desc, dest_descriptor) };
+    }
+}
+
 impl Dx12GraphicsCommandList {
     #[inline]
     pub fn rs_set_viewports(&self, viewports: &[D3D12_VIEWPORT]) {
@@ -108,6 +128,24 @@ impl Dx12GraphicsCommandList {
     }
 
     #[inline]
+    pub fn set_graphics_root_shader_resource_view(
+        &self,
+        root_parameter_index: u32,
+        buffer_location: D3D12_GPU_VIRTUAL_ADDRESS,
+    ) {
+        unsafe { self.SetGraphicsRootShaderResourceView(root_parameter_index, buffer_location) };
+    }
+
+    #[inline]
+    pub fn set_graphics_root_descriptor_table(
+        &self,
+        root_parameter_index: u32,
+        base_descriptor: D3D12_GPU_DESCRIPTOR_HANDLE,
+    ) {
+        unsafe { self.SetGraphicsRootDescriptorTable(root_parameter_index, base_descriptor) };
+    }
+
+    #[inline]
     pub fn close(&self) -> HRESULT {
         let hr = unsafe { self.Close() };
         assert_eq!(hr, 0);
@@ -119,5 +157,13 @@ impl Dx12Resource {
     #[inline]
     pub fn get_gpu_virtual_address(&self) -> D3D12_GPU_VIRTUAL_ADDRESS {
         unsafe { self.GetGPUVirtualAddress() }
+    }
+}
+
+impl Dx12CommandQueue {
+    #[inline]
+    pub fn execute_command_list(&self, command_lists: &[*mut ID3D12CommandList]) {
+        assert!(!command_lists.is_empty());
+        unsafe { self.ExecuteCommandLists(command_lists.len() as u32, command_lists.as_ptr()) };
     }
 }

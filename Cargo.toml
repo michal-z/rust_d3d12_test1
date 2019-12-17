@@ -1,5 +1,5 @@
 [package]
-name = "simple_d3d12"
+name = "rust_d3d12_test1"
 version = "0.1.0"
 authors = ["michal-z <michalziulek@gmail.com>"]
 edition = "2018"

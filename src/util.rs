@@ -9,9 +9,10 @@ use winapi::um::profileapi::{QueryPerformanceCounter, QueryPerformanceFrequency}
 use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winnt::{LARGE_INTEGER, LPCSTR};
 use winapi::um::winuser::{
-    AdjustWindowRect, CreateWindowExA, DefWindowProcA, LoadCursorA, PostQuitMessage,
-    RegisterClassA, SetWindowTextA, CW_USEDEFAULT, IDC_ARROW, VK_ESCAPE, WM_DESTROY, WM_KEYDOWN,
-    WNDCLASSA, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
+    AdjustWindowRect, CreateWindowExA, DefWindowProcA, DispatchMessageA, LoadCursorA, PeekMessageA,
+    PostQuitMessage, RegisterClassA, SetProcessDPIAware, SetWindowTextA, CW_USEDEFAULT, IDC_ARROW,
+    MSG, PM_REMOVE, VK_ESCAPE, WM_DESTROY, WM_KEYDOWN, WM_QUIT, WNDCLASSA, WS_CAPTION,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
 };
 use winapi::Interface;
 
@@ -39,6 +40,7 @@ pub struct FrameStats {
 pub struct WeakPtr<T>(*mut T);
 
 impl<T> WeakPtr<T> {
+    #[inline]
     pub fn new() -> Self {
         Self(ptr::null_mut())
     }
@@ -117,6 +119,8 @@ unsafe extern "system" fn wndproc(
 
 pub fn create_window(name: &CString, width: u32, height: u32) -> HWND {
     unsafe {
+        SetProcessDPIAware();
+
         let mut winclass: WNDCLASSA = mem::zeroed();
         winclass.lpfnWndProc = Some(wndproc);
         winclass.hInstance = GetModuleHandleA(ptr::null());
@@ -149,6 +153,19 @@ pub fn create_window(name: &CString, width: u32, height: u32) -> HWND {
             ptr::null_mut(),
         )
     }
+}
+
+pub fn handle_window_messages() -> bool {
+    unsafe {
+        let mut message: MSG = mem::zeroed();
+        while PeekMessageA(&mut message, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+            DispatchMessageA(&message);
+            if message.message == WM_QUIT {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 impl FrameStats {
