@@ -1,4 +1,5 @@
 use crate::util::WeakPtr;
+use std::mem;
 use std::option::Option;
 use std::ptr;
 use winapi::um::d3d12::*;
@@ -143,6 +144,41 @@ impl Dx12GraphicsCommandList {
         base_descriptor: D3D12_GPU_DESCRIPTOR_HANDLE,
     ) {
         unsafe { self.SetGraphicsRootDescriptorTable(root_parameter_index, base_descriptor) };
+    }
+
+    #[inline]
+    pub fn set_graphics_root_32bit_constant(
+        &self,
+        root_parameter_index: u32,
+        src_data: u32,
+        dest_offset_in_32bit_values: u32,
+    ) {
+        unsafe {
+            self.SetGraphicsRoot32BitConstant(
+                root_parameter_index,
+                src_data,
+                dest_offset_in_32bit_values,
+            )
+        };
+    }
+
+    #[inline]
+    pub fn set_graphics_root_32bit_constants<T>(
+        &self,
+        root_parameter_index: u32,
+        src_data: &[T],
+        dest_offset_in_32bit_values: u32,
+    ) {
+        assert_eq!(mem::size_of::<T>(), 4);
+        assert!(!src_data.is_empty());
+        unsafe {
+            self.SetGraphicsRoot32BitConstants(
+                root_parameter_index,
+                src_data.len() as u32,
+                src_data.as_ptr() as *const _,
+                dest_offset_in_32bit_values,
+            )
+        };
     }
 
     #[inline]

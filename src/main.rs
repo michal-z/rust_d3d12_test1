@@ -15,6 +15,12 @@ mod util;
 mod dx12_wrapper;
 mod graphics;
 
+#[repr(C)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
 struct App {
     app_name: CString,
     dx: Dx12Context,
@@ -22,6 +28,8 @@ struct App {
     pso: Dx12PipelineHandle,
     vertex_buffer: Dx12ResourceHandle,
     vertex_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
+    index_buffer: Dx12ResourceHandle,
+    index_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
 }
 
 impl App {
@@ -56,6 +64,7 @@ impl App {
         );
 
         let (vertex_buffer, vertex_buffer_srv) = Self::create_vertex_buffer(&mut dx);
+        let (index_buffer, index_buffer_srv) = Self::create_index_buffer(&mut dx);
 
         cmdlist.close();
         dx.cmdqueue
@@ -69,6 +78,8 @@ impl App {
             pso,
             vertex_buffer,
             vertex_buffer_srv,
+            index_buffer,
+            index_buffer_srv,
         }
     }
 
@@ -80,49 +91,128 @@ impl App {
     fn create_vertex_buffer(
         dx: &mut Dx12Context,
     ) -> (Dx12ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
-        let vertex_buffer_handle = dx.create_committed_resource(
-            D3D12_HEAP_TYPE_DEFAULT,
-            D3D12_HEAP_FLAG_NONE,
-            &Dx12ResourceDesc::buffer(1024),
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            None,
-        );
-        let vertex_buffer = dx.get_resource(vertex_buffer_handle);
+        let data = vec![
+            Vertex {
+                position: [0.0, 0.0, 0.0],
+                color: [0.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [-0.1, -0.7, 0.0],
+                color: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [0.0, 0.7, 0.0],
+                color: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.7, -0.7, 0.0],
+                color: [0.0, 0.0, 1.0],
+            },
+            Vertex {
+                position: [0.0, 0.0, 0.0],
+                color: [0.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [-1.0, -1.0, 0.0],
+                color: [1.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [-0.7, -0.7, 0.0],
+                color: [0.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [-0.7, -1.0, 0.0],
+                color: [1.0, 0.0, 1.0],
+            },
+        ];
 
-        let (cpu_addr, buffer, offset) = dx.allocate_upload_buffer_region(127);
-        let cpu_addr = cpu_addr as *mut Vec3;
-        unsafe {
-            *cpu_addr = Vec3::new(-0.1, -0.7, 0.0);
-            *cpu_addr.offset(1) = Vec3::new(0.0, 0.7, 0.0);
-            *cpu_addr.offset(2) = Vec3::new(0.7, -0.7, 0.0);
-        }
-        let cmdlist = dx.get_current_command_list();
-        cmdlist.copy_buffer_region(vertex_buffer, 0, buffer, offset, 48);
-        dx.transition_barrier(
-            cmdlist,
-            vertex_buffer_handle,
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        let buffer_handle = Self::create_buffer(
+            dx,
+            data.as_ptr() as *const _,
+            data.len() * mem::size_of::<Vertex>(),
         );
+        let buffer = dx.get_resource(buffer_handle);
+        let buffer_srv = dx.allocate_cpu_descriptors(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
 
-        let vertex_buffer_srv =
-            dx.allocate_cpu_descriptors(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
         dx.device.create_shader_resource_view(
-            Some(vertex_buffer),
+            Some(buffer),
             Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
                 Format: DXGI_FORMAT_UNKNOWN,
                 ViewDimension: D3D12_SRV_DIMENSION_BUFFER,
                 Shader4ComponentMapping: DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                 u: unsafe {
                     let mut u: D3D12_SHADER_RESOURCE_VIEW_DESC_u = mem::zeroed();
-                    u.Buffer_mut().NumElements = 3;
-                    u.Buffer_mut().StructureByteStride = 16;
+                    u.Buffer_mut().NumElements = data.len() as u32;
+                    u.Buffer_mut().StructureByteStride = mem::size_of::<Vertex>() as u32;
                     u
                 },
             }),
-            vertex_buffer_srv,
+            buffer_srv,
         );
 
-        (vertex_buffer_handle, vertex_buffer_srv)
+        (buffer_handle, buffer_srv)
+    }
+
+    fn create_index_buffer(
+        dx: &mut Dx12Context,
+    ) -> (Dx12ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
+        let data = vec![0 as u32, 0, 0, 0, 1, 2, 0, 0, 1, 2, 0];
+
+        let buffer_handle = Self::create_buffer(
+            dx,
+            data.as_ptr() as *const _,
+            data.len() * mem::size_of::<u32>(),
+        );
+        let buffer = dx.get_resource(buffer_handle);
+        let buffer_srv = dx.allocate_cpu_descriptors(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
+
+        dx.device.create_shader_resource_view(
+            Some(buffer),
+            Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                Format: DXGI_FORMAT_R32_UINT,
+                ViewDimension: D3D12_SRV_DIMENSION_BUFFER,
+                Shader4ComponentMapping: DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                u: unsafe {
+                    let mut u: D3D12_SHADER_RESOURCE_VIEW_DESC_u = mem::zeroed();
+                    u.Buffer_mut().NumElements = data.len() as u32;
+                    u
+                },
+            }),
+            buffer_srv,
+        );
+
+        (buffer_handle, buffer_srv)
+    }
+
+    fn create_buffer(
+        dx: &mut Dx12Context,
+        data: *const u8,
+        data_size: usize,
+    ) -> Dx12ResourceHandle {
+        let buffer_handle = dx.create_committed_resource(
+            D3D12_HEAP_TYPE_DEFAULT,
+            D3D12_HEAP_FLAG_NONE,
+            &Dx12ResourceDesc::buffer(data_size as u64),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            None,
+        );
+        let buffer = dx.get_resource(buffer_handle);
+
+        let (cpu_addr, upload_buffer, upload_offset) =
+            dx.allocate_upload_buffer_region(data_size as u32);
+        let cpu_addr = cpu_addr as *mut u8;
+
+        unsafe { ptr::copy(data, cpu_addr, data_size) };
+
+        let cmdlist = dx.get_current_command_list();
+        cmdlist.copy_buffer_region(buffer, 0, upload_buffer, upload_offset, data_size as u64);
+        dx.transition_barrier(
+            cmdlist,
+            buffer_handle,
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+        );
+
+        buffer_handle
     }
 
     fn draw(&mut self) {
@@ -150,13 +240,21 @@ impl App {
             &[0.2 as f32, 0.4 as f32, 0.8 as f32, 1.0 as f32],
             &[],
         );
-        dx.set_graphics_pipeline(cmdlist, self.pso);
         cmdlist.ia_set_primitive_topology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        cmdlist.set_graphics_root_descriptor_table(
-            0,
-            dx.copy_descriptors_to_gpu_heap(1, self.vertex_buffer_srv),
-        );
+
+        dx.set_graphics_pipeline(cmdlist, self.pso);
+        cmdlist.set_graphics_root_descriptor_table(1, {
+            let table_base = dx.copy_descriptors_to_gpu_heap(1, self.vertex_buffer_srv);
+            dx.copy_descriptors_to_gpu_heap(1, self.index_buffer_srv);
+            table_base
+        });
+
+        cmdlist.set_graphics_root_32bit_constants(0, &[3, 1], 0);
         cmdlist.draw_instanced(3, 1, 0, 0);
+
+        cmdlist.set_graphics_root_32bit_constants(0, &[8, 5], 0);
+        cmdlist.draw_instanced(3, 1, 0, 0);
+
         dx.transition_barrier(cmdlist, back_buffer, D3D12_RESOURCE_STATE_PRESENT);
         cmdlist.close();
 
