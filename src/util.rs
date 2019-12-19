@@ -189,11 +189,11 @@ impl FrameStats {
 
     pub fn update(&mut self, window: HWND, name: &CString) {
         if self.previous_time < 0.0 {
-            self.previous_time = self.get_time();
+            self.previous_time = self.time();
             self.header_refresh_time = self.previous_time;
         }
 
-        self.time = self.get_time();
+        self.time = self.time();
         self.delta_time = (self.time - self.previous_time) as f32;
         self.previous_time = self.time;
 
@@ -216,7 +216,7 @@ impl FrameStats {
         self.num_frames += 1;
     }
 
-    pub fn get_time(&self) -> f64 {
+    pub fn time(&self) -> f64 {
         let mut counter: LARGE_INTEGER = unsafe { mem::zeroed() };
         unsafe { QueryPerformanceCounter(&mut counter as *mut _ as *mut LARGE_INTEGER) };
 

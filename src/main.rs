@@ -30,15 +30,16 @@ struct App {
     vertex_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
     index_buffer: Dx12ResourceHandle,
     index_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
+    transform_buffer: Dx12ResourceHandle,
+    transform_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
 }
 
 impl App {
     fn new() -> Self {
         let app_name = CString::new("d3d12_simple").unwrap();
-
         let window = create_window(&app_name, 1920, 1080);
         let mut dx = Dx12Context::new(window);
-        let cmdlist = dx.get_and_reset_command_list();
+        let cmdlist = dx.new_command_list();
 
         let pso = dx.create_graphics_pipeline(
             &mut D3D12_GRAPHICS_PIPELINE_STATE_DESC {
@@ -65,10 +66,11 @@ impl App {
 
         let (vertex_buffer, vertex_buffer_srv) = Self::create_vertex_buffer(&mut dx);
         let (index_buffer, index_buffer_srv) = Self::create_index_buffer(&mut dx);
+        let (transform_buffer, transform_buffer_srv) = Self::create_transform_buffer(&mut dx);
 
         cmdlist.close();
         dx.cmdqueue
-            .execute_command_list(&[cmdlist.as_raw() as *mut _]);
+            .execute_command_lists(&[cmdlist.as_raw() as *mut _]);
         dx.finish();
 
         Self {
@@ -80,6 +82,8 @@ impl App {
             vertex_buffer_srv,
             index_buffer,
             index_buffer_srv,
+            transform_buffer,
+            transform_buffer_srv,
         }
     }
 
@@ -131,7 +135,7 @@ impl App {
             data.as_ptr() as *const _,
             data.len() * mem::size_of::<Vertex>(),
         );
-        let buffer = dx.get_resource(buffer_handle);
+        let buffer = dx.resource(buffer_handle);
         let buffer_srv = dx.allocate_cpu_descriptors(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
 
         dx.device.create_shader_resource_view(
@@ -163,7 +167,7 @@ impl App {
             data.as_ptr() as *const _,
             data.len() * mem::size_of::<u32>(),
         );
-        let buffer = dx.get_resource(buffer_handle);
+        let buffer = dx.resource(buffer_handle);
         let buffer_srv = dx.allocate_cpu_descriptors(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
 
         dx.device.create_shader_resource_view(
@@ -175,6 +179,41 @@ impl App {
                 u: unsafe {
                     let mut u: D3D12_SHADER_RESOURCE_VIEW_DESC_u = mem::zeroed();
                     u.Buffer_mut().NumElements = data.len() as u32;
+                    u
+                },
+            }),
+            buffer_srv,
+        );
+
+        (buffer_handle, buffer_srv)
+    }
+
+    fn create_transform_buffer(
+        dx: &mut Dx12Context,
+    ) -> (Dx12ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
+        let data = vec![
+            Mat4::from_translation(Vec3::new(0.2, 0.0, 0.0)),
+            Mat4::from_translation(Vec3::new(0.4, 0.0, 0.0)),
+        ];
+
+        let buffer_handle = Self::create_buffer(
+            dx,
+            data.as_ptr() as *const _,
+            data.len() * mem::size_of::<Mat4>(),
+        );
+        let buffer = dx.resource(buffer_handle);
+        let buffer_srv = dx.allocate_cpu_descriptors(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1);
+
+        dx.device.create_shader_resource_view(
+            Some(buffer),
+            Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+                Format: DXGI_FORMAT_UNKNOWN,
+                ViewDimension: D3D12_SRV_DIMENSION_BUFFER,
+                Shader4ComponentMapping: DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                u: unsafe {
+                    let mut u: D3D12_SHADER_RESOURCE_VIEW_DESC_u = mem::zeroed();
+                    u.Buffer_mut().NumElements = data.len() as u32;
+                    u.Buffer_mut().StructureByteStride = mem::size_of::<Mat4>() as u32;
                     u
                 },
             }),
@@ -196,7 +235,7 @@ impl App {
             D3D12_RESOURCE_STATE_COPY_DEST,
             None,
         );
-        let buffer = dx.get_resource(buffer_handle);
+        let buffer = dx.resource(buffer_handle);
 
         let (cpu_addr, upload_buffer, upload_offset) =
             dx.allocate_upload_buffer_region(data_size as u32);
@@ -204,7 +243,7 @@ impl App {
 
         unsafe { ptr::copy(data, cpu_addr, data_size) };
 
-        let cmdlist = dx.get_current_command_list();
+        let cmdlist = dx.current_command_list();
         cmdlist.copy_buffer_region(buffer, 0, upload_buffer, upload_offset, data_size as u64);
         dx.transition_barrier(
             cmdlist,
@@ -217,8 +256,8 @@ impl App {
 
     fn draw(&mut self) {
         let dx = &mut self.dx;
-        let (back_buffer, back_buffer_rtv) = dx.get_back_buffer();
-        let cmdlist = dx.get_and_reset_command_list();
+        let (back_buffer, back_buffer_rtv) = dx.back_buffer();
+        let cmdlist = dx.new_command_list();
         cmdlist.rs_set_viewports(&[D3D12_VIEWPORT {
             TopLeftX: 0.0,
             TopLeftY: 0.0,
@@ -246,20 +285,21 @@ impl App {
         cmdlist.set_graphics_root_descriptor_table(1, {
             let table_base = dx.copy_descriptors_to_gpu_heap(1, self.vertex_buffer_srv);
             dx.copy_descriptors_to_gpu_heap(1, self.index_buffer_srv);
+            dx.copy_descriptors_to_gpu_heap(1, self.transform_buffer_srv);
             table_base
         });
 
-        cmdlist.set_graphics_root_32bit_constants(0, &[3, 1], 0);
+        cmdlist.set_graphics_root_32bit_constants(0, &[3, 1, 0], 0);
         cmdlist.draw_instanced(3, 1, 0, 0);
 
-        cmdlist.set_graphics_root_32bit_constants(0, &[8, 5], 0);
+        cmdlist.set_graphics_root_32bit_constants(0, &[8, 5, 1], 0);
         cmdlist.draw_instanced(3, 1, 0, 0);
 
         dx.transition_barrier(cmdlist, back_buffer, D3D12_RESOURCE_STATE_PRESENT);
         cmdlist.close();
 
         dx.cmdqueue
-            .execute_command_list(&[cmdlist.as_raw() as *mut _]);
+            .execute_command_lists(&[cmdlist.as_raw() as *mut _]);
         dx.present_frame(0);
     }
 

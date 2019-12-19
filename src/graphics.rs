@@ -644,7 +644,7 @@ impl Dx12Context {
     }
 
     #[inline]
-    pub fn get_current_command_list(&self) -> Dx12GraphicsCommandList {
+    pub fn current_command_list(&self) -> Dx12GraphicsCommandList {
         self.cmdlist
     }
 
@@ -666,19 +666,19 @@ impl Dx12Context {
     }
 
     #[inline]
-    pub fn get_resource(&self, handle: Dx12ResourceHandle) -> WeakPtr<ID3D12Resource> {
+    pub fn resource(&self, handle: Dx12ResourceHandle) -> WeakPtr<ID3D12Resource> {
         self.validate_resource_state(handle);
         self.resource_pool.resources[handle.index as usize].ptr
     }
 
     #[inline]
-    fn get_pipeline_state(&self, handle: Dx12PipelineHandle) -> &PipelineState {
+    fn pipeline_state(&self, handle: Dx12PipelineHandle) -> &PipelineState {
         self.validate_pipeline_state(handle);
         &self.pipeline_pool.pipelines[handle.index as usize]
     }
 
     #[inline]
-    fn get_resource_state_mut(&mut self, handle: Dx12ResourceHandle) -> &mut ResourceState {
+    fn resource_state_mut(&mut self, handle: Dx12ResourceHandle) -> &mut ResourceState {
         self.validate_resource_state(handle);
         &mut self.resource_pool.resources[handle.index as usize]
     }
@@ -712,7 +712,7 @@ impl Dx12Context {
     }
 
     pub fn destroy_resource(&mut self, handle: Dx12ResourceHandle) {
-        let mut resource = self.get_resource_state_mut(handle);
+        let mut resource = self.resource_state_mut(handle);
 
         let refcount = resource.ptr.release();
         assert!(refcount == 0);
@@ -727,7 +727,7 @@ impl Dx12Context {
         resource_handle: Dx12ResourceHandle,
         state_after: D3D12_RESOURCE_STATES,
     ) {
-        let mut resource = self.get_resource_state_mut(resource_handle);
+        let mut resource = self.resource_state_mut(resource_handle);
         if resource.state != state_after {
             unsafe {
                 cmdlist.ResourceBarrier(
@@ -744,7 +744,7 @@ impl Dx12Context {
         cmdlist: Dx12GraphicsCommandList,
         handle: Dx12PipelineHandle,
     ) {
-        let pipeline_state = self.get_pipeline_state(handle);
+        let pipeline_state = self.pipeline_state(handle);
         if handle != self.current_pipeline {
             unsafe {
                 cmdlist.SetPipelineState(pipeline_state.pso.as_raw());
@@ -911,9 +911,9 @@ impl Dx12Context {
         if cpu_base == ptr::null_mut() && gpu_base == 0 {
             self.cmdlist.close();
             self.cmdqueue
-                .execute_command_list(&[self.cmdlist.as_raw() as *mut _]);
+                .execute_command_lists(&[self.cmdlist.as_raw() as *mut _]);
             self.finish();
-            self.get_and_reset_command_list();
+            self.new_command_list();
         }
 
         let (cpu_base, gpu_base) = self.gpu_upload_memory_heaps[index].allocate(size);
@@ -980,7 +980,7 @@ impl Dx12Context {
         self.gpu_upload_memory_heaps[self.frame_index as usize].size = 0;
     }
 
-    pub fn get_and_reset_command_list(&mut self) -> Dx12GraphicsCommandList {
+    pub fn new_command_list(&mut self) -> Dx12GraphicsCommandList {
         let index = self.frame_index as usize;
         unsafe {
             self.cmdallocs[index].Reset();
@@ -1013,7 +1013,7 @@ impl Dx12Context {
         self.gpu_upload_memory_heaps[self.frame_index as usize].size = 0;
     }
 
-    pub fn get_back_buffer(&self) -> (Dx12ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
+    pub fn back_buffer(&self) -> (Dx12ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
         let offset = self.back_buffer_index * self.rtv_heap.descriptor_size;
         let handle = D3D12_CPU_DESCRIPTOR_HANDLE {
             ptr: self.rtv_heap.cpu_base.ptr + offset as usize,

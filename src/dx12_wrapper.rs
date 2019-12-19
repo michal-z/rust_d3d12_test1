@@ -198,7 +198,7 @@ impl Dx12Resource {
 
 impl Dx12CommandQueue {
     #[inline]
-    pub fn execute_command_list(&self, command_lists: &[*mut ID3D12CommandList]) {
+    pub fn execute_command_lists(&self, command_lists: &[*mut ID3D12CommandList]) {
         assert!(!command_lists.is_empty());
         unsafe { self.ExecuteCommandLists(command_lists.len() as u32, command_lists.as_ptr()) };
     }
