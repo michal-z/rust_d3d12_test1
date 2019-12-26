@@ -27,10 +27,10 @@ struct App {
     frame_stats: FrameStats,
     pso: Dx12PipelineHandle,
     vertex_buffer: Dx12ResourceHandle,
-    vertex_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
     index_buffer: Dx12ResourceHandle,
-    index_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
     transform_buffer: Dx12ResourceHandle,
+    vertex_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
+    index_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
     transform_buffer_srv: D3D12_CPU_DESCRIPTOR_HANDLE,
 }
 
@@ -274,11 +274,7 @@ impl App {
         }]);
         dx.transition_barrier(cmdlist, back_buffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
         cmdlist.om_set_render_target(back_buffer_rtv, None);
-        cmdlist.clear_render_target_view(
-            back_buffer_rtv,
-            &[0.2 as f32, 0.4 as f32, 0.8 as f32, 1.0 as f32],
-            &[],
-        );
+        cmdlist.clear_render_target_view(back_buffer_rtv, &[0.2 as f32, 0.4, 0.8, 1.0], &[]);
         cmdlist.ia_set_primitive_topology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         dx.set_graphics_pipeline(cmdlist, self.pso);
