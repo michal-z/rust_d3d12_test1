@@ -5,7 +5,6 @@ use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
 use winapi::shared::windef::{HWND, RECT};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::um::profileapi::{QueryPerformanceCounter, QueryPerformanceFrequency};
-use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winnt::{LARGE_INTEGER, LPCSTR};
 use winapi::um::winuser::{
     AdjustWindowRect, CreateWindowExA, DefWindowProcA, DispatchMessageA, LoadCursorA, PeekMessageA,
@@ -13,7 +12,6 @@ use winapi::um::winuser::{
     MSG, PM_REMOVE, VK_ESCAPE, WM_DESTROY, WM_KEYDOWN, WM_QUIT, WNDCLASSA, WS_CAPTION,
     WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
 };
-use winapi::Interface;
 
 #[macro_export]
 macro_rules! vhr {
