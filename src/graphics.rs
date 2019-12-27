@@ -1,5 +1,4 @@
-use crate::dx12_wrapper::*;
-use crate::util::WeakPtr;
+use crate::d3d12::*;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::ffi::CStr;
@@ -7,6 +6,7 @@ use std::ffi::CString;
 use std::fs;
 use std::hash::Hasher;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use winapi::ctypes::c_void;

@@ -1,5 +1,5 @@
 use crate::graphics::*;
-use crate::util::*;
+use crate::misc::*;
 use glam::f32::*;
 use std::ffi::CString;
 use std::mem;
@@ -11,8 +11,8 @@ use winapi::um::d3d12::*;
 use winapi::um::d3dcommon::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
 #[macro_use]
-mod util;
-mod dx12_wrapper;
+mod misc;
+mod d3d12;
 mod graphics;
 
 #[repr(C)]
