@@ -35,9 +35,6 @@ const INVALID_PIPELINE: Dx12PipelineHandle = Dx12PipelineHandle {
     generation: 0,
 };
 
-pub const DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING: u32 =
-    0 | (1 << 3) | (2 << (3 * 2)) | (3 << (3 * 3)) | (1 << (3 * 4));
-
 pub struct Dx12Context {
     pub device: Dx12Device,
     pub cmdqueue: Dx12CommandQueue,

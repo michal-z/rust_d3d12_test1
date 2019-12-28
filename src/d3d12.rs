@@ -7,6 +7,9 @@ use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winnt::HRESULT;
 use winapi::Interface;
 
+pub const DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING: u32 =
+    0 | (1 << 3) | (2 << (3 * 2)) | (3 << (3 * 3)) | (1 << (3 * 4));
+
 #[repr(transparent)]
 pub struct WeakPtr<T>(*mut T);
 
