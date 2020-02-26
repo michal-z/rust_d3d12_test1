@@ -7,7 +7,7 @@ use winapi::um::unknwnbase::IUnknown;
 use winapi::um::winnt::HRESULT;
 use winapi::Interface;
 
-pub const DX12_DEFAULT_SHADER_4_COMPONENT_MAPPING: u32 =
+pub const DEFAULT_SHADER_4_COMPONENT_MAPPING: u32 =
     0 | (1 << 3) | (2 << (3 * 2)) | (3 << (3 * 3)) | (1 << (3 * 4));
 
 #[repr(transparent)]
@@ -62,16 +62,16 @@ impl<T: Interface> WeakPtr<T> {
     }
 }
 
-pub type Dx12Device = WeakPtr<ID3D12Device2>;
-pub type Dx12CommandQueue = WeakPtr<ID3D12CommandQueue>;
-pub type Dx12GraphicsCommandList = WeakPtr<ID3D12GraphicsCommandList1>;
-pub type Dx12Resource = WeakPtr<ID3D12Resource>;
+pub type Device = WeakPtr<ID3D12Device2>;
+pub type CommandQueue = WeakPtr<ID3D12CommandQueue>;
+pub type GraphicsCommandList = WeakPtr<ID3D12GraphicsCommandList1>;
+pub type Resource = WeakPtr<ID3D12Resource>;
 
-impl Dx12Device {
+impl Device {
     #[inline]
     pub fn create_shader_resource_view(
         &self,
-        resource: Option<Dx12Resource>,
+        resource: Option<Resource>,
         desc: Option<&D3D12_SHADER_RESOURCE_VIEW_DESC>,
         dest_descriptor: D3D12_CPU_DESCRIPTOR_HANDLE,
     ) {
@@ -87,7 +87,7 @@ impl Dx12Device {
     }
 }
 
-impl Dx12GraphicsCommandList {
+impl GraphicsCommandList {
     #[inline]
     pub fn rs_set_viewports(&self, viewports: &[D3D12_VIEWPORT]) {
         unsafe { self.RSSetViewports(viewports.len() as u32, viewports.as_ptr() as *const _) };
@@ -137,9 +137,9 @@ impl Dx12GraphicsCommandList {
     #[inline]
     pub fn copy_buffer_region(
         &self,
-        dst_buffer: Dx12Resource,
+        dst_buffer: Resource,
         dst_offset: u64,
-        src_buffer: Dx12Resource,
+        src_buffer: Resource,
         src_offset: u64,
         num_bytes: u64,
     ) {
@@ -246,14 +246,14 @@ impl Dx12GraphicsCommandList {
     }
 }
 
-impl Dx12Resource {
+impl Resource {
     #[inline]
     pub fn get_gpu_virtual_address(&self) -> D3D12_GPU_VIRTUAL_ADDRESS {
         unsafe { self.GetGPUVirtualAddress() }
     }
 }
 
-impl Dx12CommandQueue {
+impl CommandQueue {
     #[inline]
     pub fn execute_command_lists(&self, command_lists: &[*mut ID3D12CommandList]) {
         assert!(!command_lists.is_empty());

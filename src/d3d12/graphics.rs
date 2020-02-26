@@ -30,18 +30,18 @@ use winapi::Interface;
 
 const MAX_NUM_RESOURCES: usize = 256;
 const MAX_NUM_PIPELINES: usize = 256;
-const INVALID_PIPELINE: Dx12PipelineHandle = Dx12PipelineHandle {
+const INVALID_PIPELINE: PipelineHandle = PipelineHandle {
     index: 0,
     generation: 0,
 };
 
-pub struct Dx12Context {
-    pub device: Dx12Device,
-    pub cmdqueue: Dx12CommandQueue,
+pub struct Context {
+    pub device: Device,
+    pub cmdlist: GraphicsCommandList,
     pub frame_index: u32,
     pub resolution: [u32; 2],
     pub window: HWND,
-    cmdlist: Dx12GraphicsCommandList,
+    cmdqueue: CommandQueue,
     cmdallocs: [WeakPtr<ID3D12CommandAllocator>; 2],
     swapchain: WeakPtr<IDXGISwapChain3>,
     rtv_heap: DescriptorHeap,
@@ -49,24 +49,24 @@ pub struct Dx12Context {
     cpu_cbv_srv_uav_heap: DescriptorHeap,
     gpu_cbv_srv_uav_heaps: [DescriptorHeap; 2],
     gpu_upload_memory_heaps: [GpuMemoryHeap; 2],
-    swap_buffers: [Dx12ResourceHandle; 4],
+    swap_buffers: [ResourceHandle; 4],
     frame_fence: WeakPtr<ID3D12Fence>,
     frame_fence_event: HANDLE,
     num_frames: u64,
     back_buffer_index: u32,
     resource_pool: ResourcePool,
     pipeline_pool: PipelinePool,
-    current_pipeline: Dx12PipelineHandle,
+    current_pipeline: PipelineHandle,
 }
 
 #[derive(Copy, Clone, PartialEq)]
-pub struct Dx12ResourceHandle {
+pub struct ResourceHandle {
     index: u16,
     generation: u16,
 }
 
 #[derive(Copy, Clone, PartialEq)]
-pub struct Dx12PipelineHandle {
+pub struct PipelineHandle {
     index: u16,
     generation: u16,
 }
@@ -92,7 +92,7 @@ struct ResourcePool {
 struct PipelinePool {
     pipelines: Vec<PipelineState>,
     generations: Vec<u16>,
-    map: HashMap<u64, Dx12PipelineHandle>,
+    map: HashMap<u64, PipelineHandle>,
 }
 
 struct DescriptorHeap {
@@ -112,17 +112,17 @@ struct GpuMemoryHeap {
     capacity: u32,
 }
 
-pub struct Dx12ResourceBarrier;
-pub struct Dx12RasterizerDesc;
-pub struct Dx12BlendDesc;
-pub struct Dx12DepthStencilDesc;
-pub struct Dx12ResourceDesc;
-pub struct Dx12HeapProperties;
-pub struct Dx12InputElementDesc;
+pub struct ResourceBarrier;
+pub struct RasterizerDesc;
+pub struct BlendDesc;
+pub struct DepthStencilDesc;
+pub struct ResourceDesc;
+pub struct HeapProperties;
+pub struct InputElementDesc;
 
-impl Dx12ResourceBarrier {
+impl ResourceBarrier {
     pub fn transition(
-        resource: Dx12Resource,
+        resource: Resource,
         state_before: D3D12_RESOURCE_STATES,
         state_after: D3D12_RESOURCE_STATES,
     ) -> D3D12_RESOURCE_BARRIER {
@@ -138,7 +138,7 @@ impl Dx12ResourceBarrier {
     }
 }
 
-impl Dx12RasterizerDesc {
+impl RasterizerDesc {
     pub fn default() -> D3D12_RASTERIZER_DESC {
         D3D12_RASTERIZER_DESC {
             FillMode: D3D12_FILL_MODE_SOLID,
@@ -156,7 +156,7 @@ impl Dx12RasterizerDesc {
     }
 }
 
-impl Dx12BlendDesc {
+impl BlendDesc {
     pub fn default() -> D3D12_BLEND_DESC {
         let rt_blend_desc = D3D12_RENDER_TARGET_BLEND_DESC {
             BlendEnable: 0,
@@ -187,7 +187,7 @@ impl Dx12BlendDesc {
     }
 }
 
-impl Dx12ResourceDesc {
+impl ResourceDesc {
     pub fn buffer(size: u64) -> D3D12_RESOURCE_DESC {
         D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
@@ -207,7 +207,7 @@ impl Dx12ResourceDesc {
     }
 }
 
-impl Dx12DepthStencilDesc {
+impl DepthStencilDesc {
     pub fn default() -> D3D12_DEPTH_STENCIL_DESC {
         let ds_op_desc = D3D12_DEPTH_STENCILOP_DESC {
             StencilFailOp: D3D12_STENCIL_OP_KEEP,
@@ -228,7 +228,7 @@ impl Dx12DepthStencilDesc {
     }
 }
 
-impl Dx12HeapProperties {
+impl HeapProperties {
     pub fn new(heap_type: D3D12_HEAP_TYPE) -> D3D12_HEAP_PROPERTIES {
         D3D12_HEAP_PROPERTIES {
             Type: heap_type,
@@ -240,7 +240,7 @@ impl Dx12HeapProperties {
     }
 }
 
-impl Dx12InputElementDesc {
+impl InputElementDesc {
     pub fn new(name: &CString, format: DXGI_FORMAT, offset: u32) -> D3D12_INPUT_ELEMENT_DESC {
         D3D12_INPUT_ELEMENT_DESC {
             SemanticName: name.as_ptr(),
@@ -295,7 +295,7 @@ impl ResourcePool {
         resource: WeakPtr<ID3D12Resource>,
         initial_state: D3D12_RESOURCE_STATES,
         format: DXGI_FORMAT,
-    ) -> Dx12ResourceHandle {
+    ) -> ResourceHandle {
         let mut slot_idx = 0;
         for i in 1..self.resources.len() {
             if self.resources[i].ptr.is_null() {
@@ -309,7 +309,7 @@ impl ResourcePool {
         self.resources[slot_idx].state = initial_state;
         self.resources[slot_idx].format = format;
 
-        Dx12ResourceHandle {
+        ResourceHandle {
             index: slot_idx as u16,
             generation: {
                 self.generations[slot_idx] += 1;
@@ -341,7 +341,7 @@ impl PipelinePool {
         &mut self,
         pso: WeakPtr<ID3D12PipelineState>,
         rsignature: WeakPtr<ID3D12RootSignature>,
-    ) -> Dx12PipelineHandle {
+    ) -> PipelineHandle {
         let mut slot_idx = 0;
         for i in 1..self.pipelines.len() {
             if self.pipelines[i].pso.is_null() {
@@ -354,7 +354,7 @@ impl PipelinePool {
         self.pipelines[slot_idx].pso = pso;
         self.pipelines[slot_idx].rsignature = rsignature;
 
-        Dx12PipelineHandle {
+        PipelineHandle {
             index: slot_idx as u16,
             generation: {
                 self.generations[slot_idx] += 1;
@@ -364,7 +364,7 @@ impl PipelinePool {
     }
 }
 
-impl Dx12Context {
+impl Context {
     pub fn new(window: HWND) -> Self {
         // Create DXGI factory.
         let mut factory = {
@@ -570,7 +570,7 @@ impl Dx12Context {
                 &ID3D12GraphicsCommandList1::uuidof(),
                 &mut rcmdlist as *mut *mut _ as *mut *mut c_void,
             ));
-            Dx12GraphicsCommandList::from_raw(rcmdlist)
+            GraphicsCommandList::from_raw(rcmdlist)
         };
         vhr!(cmdlist.Close());
 
@@ -641,12 +641,7 @@ impl Dx12Context {
     }
 
     #[inline]
-    pub fn current_command_list(&self) -> Dx12GraphicsCommandList {
-        self.cmdlist
-    }
-
-    #[inline]
-    fn validate_resource_state(&self, handle: Dx12ResourceHandle) {
+    fn validate_resource_state(&self, handle: ResourceHandle) {
         let index = handle.index as usize;
         assert!(index > 0 && index <= MAX_NUM_RESOURCES);
         assert!(handle.generation == self.resource_pool.generations[index]);
@@ -654,7 +649,7 @@ impl Dx12Context {
     }
 
     #[inline]
-    fn validate_pipeline_state(&self, handle: Dx12PipelineHandle) {
+    fn validate_pipeline_state(&self, handle: PipelineHandle) {
         let index = handle.index as usize;
         assert!(index > 0 && index <= MAX_NUM_PIPELINES);
         assert!(handle.generation == self.pipeline_pool.generations[index]);
@@ -663,19 +658,19 @@ impl Dx12Context {
     }
 
     #[inline]
-    pub fn resource(&self, handle: Dx12ResourceHandle) -> WeakPtr<ID3D12Resource> {
+    pub fn resource(&self, handle: ResourceHandle) -> WeakPtr<ID3D12Resource> {
         self.validate_resource_state(handle);
         self.resource_pool.resources[handle.index as usize].ptr
     }
 
     #[inline]
-    fn pipeline_state(&self, handle: Dx12PipelineHandle) -> &PipelineState {
+    fn pipeline_state(&self, handle: PipelineHandle) -> &PipelineState {
         self.validate_pipeline_state(handle);
         &self.pipeline_pool.pipelines[handle.index as usize]
     }
 
     #[inline]
-    fn resource_state_mut(&mut self, handle: Dx12ResourceHandle) -> &mut ResourceState {
+    fn resource_state_mut(&mut self, handle: ResourceHandle) -> &mut ResourceState {
         self.validate_resource_state(handle);
         &mut self.resource_pool.resources[handle.index as usize]
     }
@@ -687,11 +682,11 @@ impl Dx12Context {
         desc: &D3D12_RESOURCE_DESC,
         initial_state: D3D12_RESOURCE_STATES,
         clear_value: Option<&D3D12_CLEAR_VALUE>,
-    ) -> Dx12ResourceHandle {
+    ) -> ResourceHandle {
         let resource = {
             let mut resource_raw: *mut ID3D12Resource = ptr::null_mut();
             vhr!(self.device.CreateCommittedResource(
-                &Dx12HeapProperties::new(heap_type),
+                &HeapProperties::new(heap_type),
                 heap_flags,
                 desc,
                 initial_state,
@@ -708,7 +703,7 @@ impl Dx12Context {
         self.resource_pool.add(resource, initial_state, desc.Format)
     }
 
-    pub fn destroy_resource(&mut self, handle: Dx12ResourceHandle) {
+    pub fn destroy_resource(&mut self, handle: ResourceHandle) {
         let mut resource = self.resource_state_mut(handle);
 
         let refcount = resource.ptr.release();
@@ -718,34 +713,31 @@ impl Dx12Context {
         resource.format = DXGI_FORMAT_UNKNOWN;
     }
 
-    pub fn transition_barrier(
+    pub fn cmd_transition_barrier(
         &mut self,
-        cmdlist: Dx12GraphicsCommandList,
-        resource_handle: Dx12ResourceHandle,
+        resource_handle: ResourceHandle,
         state_after: D3D12_RESOURCE_STATES,
     ) {
+        let cmdlist = self.cmdlist;
         let mut resource = self.resource_state_mut(resource_handle);
         if resource.state != state_after {
             unsafe {
                 cmdlist.ResourceBarrier(
                     1,
-                    &Dx12ResourceBarrier::transition(resource.ptr, resource.state, state_after),
+                    &ResourceBarrier::transition(resource.ptr, resource.state, state_after),
                 )
             };
             resource.state = state_after;
         }
     }
 
-    pub fn set_graphics_pipeline(
-        &mut self,
-        cmdlist: Dx12GraphicsCommandList,
-        handle: Dx12PipelineHandle,
-    ) {
+    pub fn cmd_set_graphics_pipeline(&mut self, handle: PipelineHandle) {
         let pipeline_state = self.pipeline_state(handle);
         if handle != self.current_pipeline {
             unsafe {
-                cmdlist.SetPipelineState(pipeline_state.pso.as_raw());
-                cmdlist.SetGraphicsRootSignature(pipeline_state.rsignature.as_raw());
+                self.cmdlist.SetPipelineState(pipeline_state.pso.as_raw());
+                self.cmdlist
+                    .SetGraphicsRootSignature(pipeline_state.rsignature.as_raw());
                 self.current_pipeline = handle;
             }
         }
@@ -756,7 +748,7 @@ impl Dx12Context {
         pso_desc: &mut D3D12_GRAPHICS_PIPELINE_STATE_DESC,
         vs_name: &str,
         ps_name: &str,
-    ) -> Dx12PipelineHandle {
+    ) -> PipelineHandle {
         let vs_bytecode = fs::read(format!("data/shaders/{}", vs_name)).unwrap();
         let ps_bytecode = fs::read(format!("data/shaders/{}", ps_name)).unwrap();
 
@@ -809,7 +801,7 @@ impl Dx12Context {
         &mut self,
         pso_desc: &mut D3D12_COMPUTE_PIPELINE_STATE_DESC,
         cs_name: &str,
-    ) -> Dx12PipelineHandle {
+    ) -> PipelineHandle {
         let cs_bytecode = fs::read(format!("data/shaders/{}", cs_name)).unwrap();
 
         pso_desc.CS = D3D12_SHADER_BYTECODE {
@@ -853,7 +845,7 @@ impl Dx12Context {
         handle
     }
 
-    pub fn destroy_pipeline(&mut self, handle: Dx12PipelineHandle) {
+    pub fn destroy_pipeline(&mut self, handle: PipelineHandle) {
         self.validate_pipeline_state(handle);
 
         let mut key_to_remove: u64 = 0;
@@ -909,8 +901,8 @@ impl Dx12Context {
             self.cmdlist.close();
             self.cmdqueue
                 .execute_command_lists(&[self.cmdlist.as_raw() as *mut _]);
-            self.finish();
-            self.new_command_list();
+            self.wait_for_gpu();
+            self.begin_frame();
         }
 
         let (cpu_base, gpu_base) = self.gpu_upload_memory_heaps[index].allocate(size);
@@ -951,7 +943,11 @@ impl Dx12Context {
         dest_gpu_base
     }
 
-    pub fn present_frame(&mut self, swap_interval: u32) {
+    pub fn end_frame(&mut self, swap_interval: u32) {
+        self.cmdlist.close();
+        self.cmdqueue
+            .execute_command_lists(&[self.cmdlist.as_raw() as *mut _]);
+
         self.num_frames += 1;
 
         vhr!(self.swapchain.Present(swap_interval, 0));
@@ -977,7 +973,7 @@ impl Dx12Context {
         self.gpu_upload_memory_heaps[self.frame_index as usize].size = 0;
     }
 
-    pub fn new_command_list(&mut self) -> Dx12GraphicsCommandList {
+    pub fn begin_frame(&mut self) -> GraphicsCommandList {
         let index = self.frame_index as usize;
         unsafe {
             self.cmdallocs[index].Reset();
@@ -993,7 +989,7 @@ impl Dx12Context {
         self.cmdlist
     }
 
-    pub fn finish(&mut self) {
+    pub fn wait_for_gpu(&mut self) {
         self.num_frames += 1;
 
         vhr!(self
@@ -1010,7 +1006,7 @@ impl Dx12Context {
         self.gpu_upload_memory_heaps[self.frame_index as usize].size = 0;
     }
 
-    pub fn back_buffer(&self) -> (Dx12ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
+    pub fn back_buffer(&self) -> (ResourceHandle, D3D12_CPU_DESCRIPTOR_HANDLE) {
         let offset = self.back_buffer_index * self.rtv_heap.descriptor_size;
         let handle = D3D12_CPU_DESCRIPTOR_HANDLE {
             ptr: self.rtv_heap.cpu_base.ptr + offset as usize,
@@ -1192,9 +1188,9 @@ impl GpuMemoryHeap {
         let heap = {
             let mut heap_raw: *mut ID3D12Resource = ptr::null_mut();
             vhr!(device.CreateCommittedResource(
-                &Dx12HeapProperties::new(heap_type),
+                &HeapProperties::new(heap_type),
                 D3D12_HEAP_FLAG_NONE,
-                &Dx12ResourceDesc::buffer(capacity as u64),
+                &ResourceDesc::buffer(capacity as u64),
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 ptr::null(),
                 &ID3D12Resource::uuidof(),
